@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 13 — Observability Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0a0e1a;
+      --surface:   #111827;
+      --surface2:  #1a2236;
+      --border:    rgba(99,130,201,0.18);
+      --accent:    #6366f1;
+      --accent2:   #22d3ee;
+      --green:     #10b981;
+      --yellow:    #f59e0b;
+      --red:       #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --radius:    14px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 32px;
+      background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(34,211,238,0.06));
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 100;
+    }
+    header .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.02em; }
+    header span { font-size: 0.75rem; color: var(--muted); margin-left: 4px; }
+    .status-dot {
+      margin-left: auto; display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; color: var(--green);
+    }
+    .status-dot::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── LAYOUT ── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      grid-template-rows: auto auto 1fr;
+      gap: 20px;
+      padding: 24px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: border-color .25s;
+    }
+    .card:hover { border-color: rgba(99,102,241,0.4); }
+    .card-title {
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .card-title .icon { font-size: 14px; }
+
+    /* ── METRICS GRID ── */
+    .metrics-grid {
+      grid-column: 1; grid-row: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .metric-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform .2s, border-color .25s;
+    }
+    .metric-card:hover { transform: translateY(-2px); border-color: rgba(99,102,241,0.5); }
+    .metric-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .metric-card.latency::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .metric-card.traffic::before { background: linear-gradient(90deg, var(--green), #059669); }
+    .metric-card.errors::before  { background: linear-gradient(90deg, var(--red), #dc2626); }
+    .metric-card.cost::before    { background: linear-gradient(90deg, var(--yellow), #d97706); }
+    .metric-card.tokens::before  { background: linear-gradient(90deg, #a78bfa, var(--accent)); }
+    .metric-card.quality::before { background: linear-gradient(90deg, var(--accent2), #0e7490); }
+
+    .metric-label { font-size: 0.7rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .06em; }
+    .metric-value { font-size: 2rem; font-weight: 700; margin: 6px 0 2px; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+    .metric-sub   { font-size: 0.72rem; color: var(--muted); }
+    .slo-badge {
+      position: absolute; top: 12px; right: 12px;
+      font-size: 0.65rem; font-weight: 600; padding: 2px 7px;
+      border-radius: 999px; background: rgba(16,185,129,0.15); color: var(--green);
+    }
+    .slo-badge.warn { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .slo-badge.fail { background: rgba(239,68,68,0.15); color: var(--red); }
+
+    /* ── LATENCY BAR ── */
+    .latency-bars { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .latency-row  { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; }
+    .latency-row .pct { width: 28px; color: var(--muted); }
+    .latency-bar  { flex: 1; height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+    .latency-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.8s ease; }
+    .latency-row .val { width: 52px; text-align: right; font-family: 'JetBrains Mono', monospace; }
+
+    /* ── ERROR BREAKDOWN ── */
+    .error-breakdown { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+    .error-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; }
+    .error-name { color: var(--muted); }
+    .error-count { font-family: 'JetBrains Mono', monospace; color: var(--red); font-weight: 600; }
+
+    /* ── CHAT ── */
+    .chat-panel {
+      grid-column: 2; grid-row: 1 / 4;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .chat-messages {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+      max-height: 340px; padding-right: 4px;
+    }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 0.82rem; line-height: 1.5; animation: fadeIn .3s ease; }
+    .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--accent), #4338ca); border-radius: 12px 12px 2px 12px; }
+    .msg.bot  { align-self: flex-start; background: var(--surface2); border: 1px solid var(--border); border-radius: 2px 12px 12px 12px; }
+    .msg .meta { font-size: 0.65rem; color: var(--muted); margin-top: 5px; font-family: 'JetBrains Mono', monospace; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+    .chat-form { display: flex; flex-direction: column; gap: 8px; }
+    .chat-row { display: flex; gap: 6px; }
+    .chat-select, .chat-input {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 10px 14px;
+      font-family: 'Inter', sans-serif; font-size: 0.83rem; outline: none;
+      transition: border-color .2s;
+    }
+    .chat-select { flex-shrink: 0; }
+    .chat-select:focus, .chat-input:focus { border-color: var(--accent); }
+    .chat-input { flex: 1; }
+    textarea.chat-input { resize: none; height: 68px; }
+    .btn {
+      padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer;
+      font-weight: 600; font-size: 0.83rem; transition: opacity .2s, transform .15s;
+    }
+    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #4338ca); color: #fff; }
+    .btn-danger  { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn-success { background: rgba(16,185,129,0.15); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── INCIDENTS ── */
+    .incidents-panel { grid-column: 1; grid-row: 2; }
+    .incident-list { display: flex; gap: 10px; flex-wrap: wrap; }
+    .incident-item {
+      flex: 1; min-width: 150px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px; display: flex;
+      flex-direction: column; gap: 8px;
+    }
+    .incident-name { font-size: 0.78rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+    .incident-status { font-size: 0.7rem; }
+    .incident-status.active { color: var(--red); }
+    .incident-status.inactive { color: var(--muted); }
+    .incident-btns { display: flex; gap: 6px; }
+    .incident-btns .btn { flex: 1; padding: 7px 4px; font-size: 0.72rem; }
+
+    /* ── LOGS ── */
+    .logs-panel { grid-column: 1; grid-row: 3; }
+    .logs-container {
+      background: #0d1117; border-radius: 10px; padding: 14px;
+      max-height: 260px; overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+      line-height: 1.6;
+    }
+    .logs-container::-webkit-scrollbar { width: 4px; }
+    .logs-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .log-line { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .log-ts    { color: #64748b; flex-shrink: 0; }
+    .log-level { flex-shrink: 0; width: 42px; }
+    .log-level.info    { color: var(--accent2); }
+    .log-level.warning { color: var(--yellow); }
+    .log-level.error   { color: var(--red); }
+    .log-event { color: var(--text); flex: 1; }
+    .log-cid   { color: #6366f1; }
+    .log-empty { color: var(--muted); font-style: italic; }
+
+    /* ── REFRESH BAR ── */
+    .refresh-bar {
+      height: 2px; background: var(--border); border-radius: 1px; overflow: hidden;
+      margin-top: 12px;
+    }
+    .refresh-fill {
+      height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 1px;
+      animation: refill 15s linear infinite;
+    }
+    @keyframes refill { from{width:100%} to{width:0%} }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+      .chat-panel { grid-column: 1; grid-row: auto; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📡</div>
+  <div>
+    <h1>Observability Dashboard <span>Day 13 Lab</span></h1>
+  </div>
+  <div class="status-dot" id="statusDot">Server Online</div>
+</header>
+
+<main>
+
+  <!-- ── METRICS GRID ── -->
+  <div class="metrics-grid">
+
+    <!-- Latency -->
+    <div class="metric-card latency">
+      <div class="metric-label">⚡ Latency</div>
+      <div class="metric-value" id="latP95">—</div>
+      <div class="metric-sub">P95 (ms) · SLO &lt; 3000ms</div>
+      <div class="slo-badge" id="latSlo">—</div>
+      <div class="latency-bars" style="margin-top:10px">
+        <div class="latency-row"><span class="pct">P50</span><div class="latency-bar"><div class="latency-bar-fill" id="barP50" style="width:0%"></div></div><span class="val" id="valP50">—</span></div>
+        <div class="latency-row"><span class="pct">P95</span><div class="latency-bar"><div class="latency-bar-fill" id="barP95" style="width:0%"></div></div><span class="val" id="valP95">—</span></div>
+        <div class="latency-row"><span class="pct">P99</span><div class="latency-bar"><div class="latency-bar-fill" id="barP99" style="width:0%"></div></div><span class="val" id="valP99">—</span></div>
+      </div>
+    </div>
+
+    <!-- Traffic -->
+    <div class="metric-card traffic">
+      <div class="metric-label">📊 Traffic</div>
+      <div class="metric-value" id="traffic">0</div>
+      <div class="metric-sub">Total requests</div>
+      <div class="slo-badge" style="background:rgba(16,185,129,0.15);color:var(--green)">LIVE</div>
+    </div>
+
+    <!-- Error Rate -->
+    <div class="metric-card errors">
+      <div class="metric-label">🚨 Error Rate</div>
+      <div class="metric-value" id="errorRate">0%</div>
+      <div class="metric-sub">SLO &lt; 2%</div>
+      <div class="slo-badge" id="errSlo">OK</div>
+      <div class="error-breakdown" id="errorBreakdown"></div>
+    </div>
+
+    <!-- Cost -->
+    <div class="metric-card cost">
+      <div class="metric-label">💰 Cost</div>
+      <div class="metric-value" id="totalCost">$0</div>
+      <div class="metric-sub">Total · avg <span id="avgCost">$0</span> /req · SLO &lt;$2.5/day</div>
+      <div class="slo-badge" id="costSlo">OK</div>
+    </div>
+
+    <!-- Tokens -->
+    <div class="metric-card tokens">
+      <div class="metric-label">🔤 Tokens</div>
+      <div class="metric-value" id="tokensIn">0</div>
+      <div class="metric-sub">In · Out: <span id="tokensOut">0</span></div>
+    </div>
+
+    <!-- Quality -->
+    <div class="metric-card quality">
+      <div class="metric-label">⭐ Quality</div>
+      <div class="metric-value" id="quality">—</div>
+      <div class="metric-sub">Avg score · SLO &gt; 0.75</div>
+      <div class="slo-badge" id="qualSlo">—</div>
+    </div>
+
+  </div>
+
+  <!-- ── CHAT PANEL ── -->
+  <div class="chat-panel card">
+    <div class="card-title"><span class="icon">💬</span> Chat Interface</div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="msg bot">
+        👋 Xin chào! Gửi một tin nhắn để kiểm tra hệ thống observability.
+      </div>
+    </div>
+    <form class="chat-form" id="chatForm">
+      <div class="chat-row">
+        <select class="chat-select" id="featureSelect">
+          <option value="qa">qa</option>
+          <option value="summary">summary</option>
+          <option value="chat">chat</option>
+        </select>
+        <input class="chat-input" id="userIdInput" placeholder="User ID" value="u_demo_01" />
+      </div>
+      <div class="chat-row">
+        <textarea class="chat-input" id="messageInput" placeholder="Nhập tin nhắn của bạn...">What are the SLO targets for this system?</textarea>
+      </div>
+      <div class="chat-row">
+        <button class="btn btn-primary" type="submit" id="sendBtn">Send ➤</button>
+      </div>
+    </form>
+    <div class="refresh-bar"><div class="refresh-fill" id="refreshFill"></div></div>
+    <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;text-align:right">
+      Auto-refresh metrics every 15s
+    </div>
+  </div>
+
+  <!-- ── INCIDENTS ── -->
+  <div class="incidents-panel card">
+    <div class="card-title"><span class="icon">🔥</span> Incident Control</div>
+    <div class="incident-list" id="incidentList"></div>
+  </div>
+
+  <!-- ── LOGS ── -->
+  <div class="logs-panel card">
+    <div class="card-title">
+      <span class="icon">📋</span> Live Logs
+      <button class="btn btn-primary" style="margin-left:auto;padding:4px 12px;font-size:0.7rem" onclick="fetchLogs()">Refresh</button>
+    </div>
+    <div class="logs-container" id="logsContainer">
+      <div class="log-empty">No logs yet. Send a request first.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const BASE = '';
+
+  // ──── METRICS ────
+  async function fetchMetrics() {
+    try {
+      const r = await fetch(`${BASE}/metrics`);
+      if (!r.ok) return;
+      const d = await r.json();
+
+      const traffic = d.traffic ?? 0;
+      document.getElementById('traffic').textContent = traffic;
+
+      // Latency
+      const p50 = d.latency_p50 ?? 0, p95 = d.latency_p95 ?? 0, p99 = d.latency_p99 ?? 0;
+      document.getElementById('latP95').textContent = p95 + 'ms';
+      const maxLat = Math.max(p99, 1);
+      document.getElementById('valP50').textContent = p50 + 'ms';
+      document.getElementById('valP95').textContent = p95 + 'ms';
+      document.getElementById('valP99').textContent = p99 + 'ms';
+      document.getElementById('barP50').style.width = Math.min(100, (p50/maxLat)*100) + '%';
+      document.getElementById('barP95').style.width = Math.min(100, (p95/maxLat)*100) + '%';
+      document.getElementById('barP99').style.width = '100%';
+      const latSlo = document.getElementById('latSlo');
+      if (traffic === 0) { latSlo.textContent = '—'; latSlo.className = 'slo-badge'; }
+      else if (p95 < 3000) { latSlo.textContent = '✓ OK'; latSlo.className = 'slo-badge'; }
+      else { latSlo.textContent = '✗ BREACH'; latSlo.className = 'slo-badge fail'; }
+
+      // Error rate
+      const errors = Object.values(d.error_breakdown ?? {}).reduce((a,b)=>a+b, 0);
+      const errRate = traffic > 0 ? ((errors / traffic) * 100).toFixed(1) : '0.0';
+      document.getElementById('errorRate').textContent = errRate + '%';
+      const errSlo = document.getElementById('errSlo');
+      if (parseFloat(errRate) > 2) { errSlo.textContent = '✗ BREACH'; errSlo.className = 'slo-badge fail'; }
+      else { errSlo.textContent = '✓ OK'; errSlo.className = 'slo-badge'; }
+      const eb = document.getElementById('errorBreakdown');
+      const breakdown = d.error_breakdown ?? {};
+      eb.innerHTML = Object.keys(breakdown).length === 0
+        ? '<div class="error-row"><span class="error-name">No errors 🎉</span></div>'
+        : Object.entries(breakdown).map(([k,v]) =>
+            `<div class="error-row"><span class="error-name">${k}</span><span class="error-count">${v}</span></div>`
+          ).join('');
+
+      // Cost
+      document.getElementById('totalCost').textContent = '$' + (d.total_cost_usd ?? 0).toFixed(4);
+      document.getElementById('avgCost').textContent = '$' + (d.avg_cost_usd ?? 0).toFixed(4);
+      const costSlo = document.getElementById('costSlo');
+      const daily = (d.total_cost_usd ?? 0) * 24;
+      costSlo.textContent = daily > 2.5 ? '✗ BREACH' : '✓ OK';
+      costSlo.className = daily > 2.5 ? 'slo-badge fail' : 'slo-badge';
+
+      // Tokens
+      document.getElementById('tokensIn').textContent = (d.tokens_in_total ?? 0).toLocaleString();
+      document.getElementById('tokensOut').textContent = (d.tokens_out_total ?? 0).toLocaleString();
+
+      // Quality
+      const q = d.quality_avg ?? 0;
+      document.getElementById('quality').textContent = traffic > 0 ? q.toFixed(2) : '—';
+      const qualSlo = document.getElementById('qualSlo');
+      if (traffic === 0) { qualSlo.textContent = '—'; qualSlo.className = 'slo-badge'; }
+      else if (q >= 0.75) { qualSlo.textContent = '✓ OK'; qualSlo.className = 'slo-badge'; }
+      else { qualSlo.textContent = '✗ LOW'; qualSlo.className = 'slo-badge warn'; }
+
+    } catch(e) {
+      document.getElementById('statusDot').textContent = 'Connecting…';
+      document.getElementById('statusDot').style.color = 'var(--yellow)';
+    }
+  }
+
+  // ──── HEALTH / INCIDENTS ────
+  async function fetchHealth() {
+    try {
+      const r = await fetch(`${BASE}/health`);
+      if (!r.ok) return;
+      const d = await r.json();
+      document.getElementById('statusDot').textContent = 'Server Online';
+      document.getElementById('statusDot').style.color = 'var(--green)';
+      renderIncidents(d.incidents ?? {});
+    } catch(e) {}
+  }
+
+  function renderIncidents(incidents) {
+    const el = document.getElementById('incidentList');
+    const descriptions = {
+      rag_slow:   'Simulates slow retrieval (high latency)',
+      tool_fail:  'Simulates tool / agent failure (errors)',
+      cost_spike: 'Simulates cost budget spike',
+    };
+    el.innerHTML = Object.entries(incidents).map(([name, active]) => `
+      <div class="incident-item" id="inc-${name}">
+        <div class="incident-name">${name}</div>
+        <div class="incident-status ${active?'active':'inactive'}">${active ? '🔴 ACTIVE' : '⚪ Inactive'}</div>
+        <div style="font-size:0.67rem;color:var(--muted)">${descriptions[name]||''}</div>
+        <div class="incident-btns">
+          <button class="btn btn-danger" onclick="triggerIncident('${name}','enable')" ${active?'disabled':''}>Enable</button>
+          <button class="btn btn-success" onclick="triggerIncident('${name}','disable')" ${!active?'disabled':''}>Disable</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function triggerIncident(name, action) {
+    await fetch(`${BASE}/incidents/${name}/${action}`, { method: 'POST' });
+    fetchHealth();
+  }
+
+  // ──── CHAT ────
+  document.getElementById('chatForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg   = document.getElementById('messageInput').value.trim();
+    const uid   = document.getElementById('userIdInput').value.trim() || 'u_demo_01';
+    const feat  = document.getElementById('featureSelect').value;
+    if (!msg) return;
+
+    appendMsg('user', msg);
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('sendBtn').textContent = 'Sending…';
+
+    try {
+      const r = await fetch(`${BASE}/chat`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user_id: uid, session_id: 's_demo_01', feature: feat, message: msg })
+      });
+      const d = await r.json();
+      if (r.ok) {
+        appendMsg('bot', d.answer, {
+          cid: d.correlation_id,
+          latency: d.latency_ms + 'ms',
+          tokens: `↑${d.tokens_in} ↓${d.tokens_out}`,
+          cost: '$' + d.cost_usd.toFixed(5),
+          quality: '⭐ ' + d.quality_score,
+        });
+        fetchMetrics();
+        fetchLogs();
+      } else {
+        appendMsg('bot', '❌ Error: ' + (d.detail || 'Unknown error'));
+      }
+    } catch(err) {
+      appendMsg('bot', '❌ Network error: ' + err.message);
+    }
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('sendBtn').textContent = 'Send ➤';
+  });
+
+  function appendMsg(role, text, meta) {
+    const box = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.innerHTML = `<div>${text}</div>`;
+    if (meta) {
+      div.innerHTML += `<div class="meta">🔗 ${meta.cid} · ${meta.latency} · ${meta.tokens} · ${meta.cost} · ${meta.quality}</div>`;
+    }
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // ──── LOGS ────
+  async function fetchLogs() {
+    try {
+      const r = await fetch(`${BASE}/logs?n=40`);
+      if (!r.ok) return;
+      const d = await r.json();
+      const container = document.getElementById('logsContainer');
+      if (!d.logs || d.logs.length === 0) {
+        container.innerHTML = '<div class="log-empty">No logs yet. Send a request first.</div>';
+        return;
+      }
+      container.innerHTML = d.logs.slice().reverse().map(rec => {
+        const ts = (rec.ts || '').replace('T', ' ').replace('Z', '').split('.')[0];
+        const level = rec.level || 'info';
+        const event = rec.event || '';
+        const cid   = rec.correlation_id ? `<span class="log-cid">[${rec.correlation_id}]</span>` : '';
+        const svc   = rec.service ? `<span style="color:var(--muted)">${rec.service}</span>` : '';
+        return `<div class="log-line">
+          <span class="log-ts">${ts}</span>
+          <span class="log-level ${level}">${level.toUpperCase()}</span>
+          ${svc} ${cid}
+          <span class="log-event">${event}</span>
+        </div>`;
+      }).join('');
+      container.scrollTop = 0;
+    } catch(e) {}
+  }
+
+  // ──── INIT & POLLING ────
+  function init() {
+    fetchMetrics();
+    fetchHealth();
+    fetchLogs();
+    setInterval(() => { fetchMetrics(); fetchHealth(); fetchLogs(); }, 15000);
+  }
+  init();
+</script>
+</body>
+</html>

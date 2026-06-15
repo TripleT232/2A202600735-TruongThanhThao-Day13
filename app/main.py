@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from structlog.contextvars import bind_contextvars
 
 from .agent import LabAgent
@@ -21,6 +27,10 @@ app = FastAPI(title="Day 13 Observability Lab")
 app.add_middleware(CorrelationIdMiddleware)
 agent = LabAgent()
 
+_STATIC_DIR = Path(__file__).parent / "static"
+_STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
 
 @app.on_event("startup")
 async def startup() -> None:
@@ -30,6 +40,26 @@ async def startup() -> None:
         env=os.getenv("APP_ENV", "dev"),
         payload={"tracing_enabled": tracing_enabled()},
     )
+
+
+@app.get("/", include_in_schema=False)
+async def dashboard() -> FileResponse:
+    return FileResponse(str(_STATIC_DIR / "index.html"))
+
+
+@app.get("/logs")
+async def get_logs(n: int = Query(default=30, ge=1, le=200)) -> dict:
+    log_path = Path(os.getenv("LOG_PATH", "data/logs.jsonl"))
+    if not log_path.exists():
+        return {"logs": []}
+    lines = [l for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    records = []
+    for line in lines[-n:]:
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return {"logs": records}
 
 
 @app.get("/health")
@@ -44,8 +74,14 @@ async def metrics() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: Request, body: ChatRequest) -> ChatResponse:
-    # TODO: Enrich logs with request context (user_id_hash, session_id, feature, model, env)
-    # bind_contextvars(...)
+    # Enrich logs with request context (user_id_hash, session_id, feature, model, env)
+    bind_contextvars(
+        user_id_hash=hash_user_id(body.user_id),
+        session_id=body.session_id,
+        feature=body.feature,
+        model=agent.model,
+        env=os.getenv("APP_ENV", "dev")
+    )
     
     log.info(
         "request_received",
