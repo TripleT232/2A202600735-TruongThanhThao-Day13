@@ -28,7 +28,12 @@
 - [TRACE_WATERFALL_EXPLANATION]: Hệ thống sử dụng decorator `@observe()` từ `langfuse.decorators` trong `app/agent.py`. Khi `LANGFUSE_PUBLIC_KEY` và `LANGFUSE_SECRET_KEY` chưa được cấu hình trong `.env`, module `app/tracing.py` tự động fallback sang một stub nội bộ (DummyContext) để ứng dụng vẫn chạy bình thường mà không lỗi. Mỗi request ghi lại đầy đủ `correlation_id`, `user_id_hash`, `session_id`, `feature`, `model` trong structured log (xem validate_logs.py: 30 unique IDs, 100/100 score).
 
 ### 3.2 Dashboard & SLOs
-- [DASHBOARD_6_PANELS_SCREENSHOT]: *(Chụp màn hình trình duyệt tại http://127.0.0.1:8001 hiển thị 6 panels: Latency, Traffic, Error Rate, Cost, Tokens, Quality)* ![alt text](image.png)
+- [DASHBOARD_6_PANELS_SCREENSHOT]: *(Chụp màn hình trình duyệt tại http://127.0.0.1:8001 hiển thị 6 panels: Latency, Traffic, Error Rate, Cost, Tokens, Quality)* 
+![alt text](image.png)
+![alt text](image-4.png)
+![alt text](image-5.png)
+![alt text](image-6.png)
+![alt text](image-7.png)
 - [SLO_TABLE]:
 
 | SLI | Target | Window | Current Value |
